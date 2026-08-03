@@ -1,0 +1,10 @@
+{
+  "name": "claude-session",
+  "version": "0.1.0",
+  "description": "Create, continue, fork, inspect, wait for, and interrupt Claude Code sessions.",
+  "author": {
+    "name": "celados"
+  },
+  "homepage": "https://github.com/celados/claude-session",
+  "repository": "https://github.com/celados/claude-session"
+}

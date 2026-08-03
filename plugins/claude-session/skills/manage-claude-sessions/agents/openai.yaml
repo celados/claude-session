@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Claude Sessions"
+  short_description: "Create, continue, fork, and monitor Claude sessions"
+  default_prompt: "Use $manage-claude-sessions to delegate this work to a Claude session."

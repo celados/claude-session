@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-session",
+  "metadata": {
+    "description": "Session lifecycle tools for Claude Code and Codex."
+  },
+  "owner": {
+    "name": "celados"
+  },
+  "plugins": [
+    {
+      "name": "claude-session",
+      "description": "Create, continue, fork, inspect, wait for, and interrupt Claude Code sessions.",
+      "version": "0.1.0",
+      "author": {
+        "name": "celados"
+      },
+      "source": "./plugins/claude-session",
+      "category": "productivity",
+      "homepage": "https://github.com/celados/claude-session",
+      "tags": ["claude-code", "codex", "mcp", "sessions", "agents"]
+    }
+  ]
+}

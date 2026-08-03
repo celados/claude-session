@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "claude-session": {
+      "command": "claude-session-mcp"
+    }
+  }
+}

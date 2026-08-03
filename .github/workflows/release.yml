@@ -1,0 +1,102 @@
+name: Release claude-session
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-claude-session
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main and tags
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Validate unreleased version
+        id: release
+        shell: bash
+        run: |
+          version=$(jq -r .version package.json)
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid SemVer version: $version" >&2
+            exit 1
+          fi
+          tag="v$version"
+          if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+            echo "Release tag already exists: $tag" >&2
+            exit 1
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+      - name: Install frozen dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Verify source
+        run: |
+          bun run typecheck
+          bun run test
+          bun run check
+
+      - name: Build and verify release assets
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/claude-session-release
+        run: bun run verify:package -- --output-dir "$RELEASE_DIR"
+
+      - name: Create public GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_DIR: ${{ runner.temp }}/claude-session-release
+        run: |
+          gh release create "$TAG" \
+            "$RELEASE_DIR/claude-session-$VERSION.tgz" \
+            "$RELEASE_DIR/claude-session.tgz" \
+            "$RELEASE_DIR/SHA256SUMS" \
+            --target "$GITHUB_SHA" \
+            --generate-notes \
+            --latest
+
+      - name: Smoke public tokenless global install
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          consumer=$(mktemp -d)
+          trap 'rm -rf "$consumer"' EXIT
+          export BUN_INSTALL_GLOBAL_DIR="$consumer/global"
+          export BUN_INSTALL_BIN="$consumer/bin"
+          export BUN_INSTALL_CACHE_DIR="$consumer/cache"
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/claude-session.tgz"
+          installed=false
+          for _ in 1 2 3 4 5 6; do
+            if env -u GH_TOKEN -u GITHUB_TOKEN bun add --global "claude-session@$url"; then
+              installed=true
+              break
+            fi
+            sleep 10
+          done
+          [[ "$installed" == "true" ]]
+          [[ "$("$BUN_INSTALL_BIN/claude-session" --version)" == "${TAG#v}" ]]
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"release-smoke","version":"1.0.0"}}}' \
+            | "$BUN_INSTALL_BIN/claude-session-mcp" \
+            | jq -e '.result.serverInfo.name == "claude-session"' >/dev/null

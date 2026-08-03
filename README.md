@@ -9,10 +9,39 @@ send, fork, wait, and interrupt.
 Requirements: Bun and an authenticated `claude` CLI on `PATH`.
 
 ```sh
-bun install
-bun link
+bun add --global \
+  "claude-session@https://github.com/celados/claude-session/releases/latest/download/claude-session.tgz"
 claude-session --help
 ```
+
+This installs the same GitHub Release artifact used by every public user. The
+package remains marked `private` so it cannot be published to npm by mistake.
+
+## Install the agent integration
+
+The plugin combines an MCP server, which exposes executable session tools, with
+a Skill that teaches the host when to create, continue, fork, wait for, or
+interrupt a session. Install it from this public repository after installing the
+CLI above.
+
+Claude Code:
+
+```sh
+claude plugin marketplace add celados/claude-session
+claude plugin install claude-session@claude-session --scope user
+```
+
+Codex:
+
+```sh
+codex plugin marketplace add celados/claude-session
+codex plugin add claude-session@claude-session
+```
+
+Start a new Claude Code or Codex session after installation. The MCP server
+appears as `claude-session`; its tools are `list_sessions`, `read_session`,
+`create_session`, `send_to_session`, `fork_session`, `wait_for_session`, and
+`interrupt_session`.
 
 ## Commands
 
@@ -54,6 +83,12 @@ The complete machine-readable API is available through:
 claude-session @schema
 ```
 
+The same API is available to MCP clients over stdio:
+
+```sh
+claude-session-mcp
+```
+
 ## Lifecycle model
 
 Runs started by this tool use Claude's headless JSON mode rather than Claude's
@@ -73,7 +108,14 @@ unlinked immediately after the child process starts.
 ## Development
 
 ```sh
+bun install
 bun run test
 bun run typecheck
 bun run check
+bun run verify:package
 ```
+
+Releases are deliberately created through the `Release claude-session` GitHub
+Actions workflow. It tests the source, verifies an isolated global install,
+publishes versioned and stable tarballs plus `SHA256SUMS`, and then repeats the
+install without a GitHub token.

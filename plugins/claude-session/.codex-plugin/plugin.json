@@ -1,0 +1,21 @@
+{
+  "name": "claude-session",
+  "version": "0.1.0",
+  "description": "Create, continue, fork, inspect, wait for, and interrupt Claude Code sessions.",
+  "author": {
+    "name": "celados"
+  },
+  "homepage": "https://github.com/celados/claude-session",
+  "repository": "https://github.com/celados/claude-session",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Session",
+    "shortDescription": "Manage Claude Code sessions from Codex.",
+    "longDescription": "Expose Claude Code session lifecycle tools and delegation guidance to Codex through a local stdio MCP server.",
+    "developerName": "celados",
+    "category": "Productivity",
+    "capabilities": ["MCP tools", "Skills"],
+    "defaultPrompt": "Use $manage-claude-sessions to delegate this work to a Claude session."
+  },
+  "mcpServers": "./.mcp.json"
+}

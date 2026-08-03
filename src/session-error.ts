@@ -1,4 +1,4 @@
-export type SessionErrorCode = "claude_run_failed" | "session_busy";
+export type SessionErrorCode = "claude_run_failed" | "session_busy" | "tool_not_found";
 
 export class SessionControllerError extends Error {
   readonly code: SessionErrorCode;

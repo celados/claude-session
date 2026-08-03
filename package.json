@@ -2,17 +2,30 @@
   "name": "claude-session",
   "version": "0.1.0",
   "private": true,
-  "bin": {
-    "claude-session": "./src/main.ts"
+  "description": "Agent-first lifecycle control for Claude Code sessions.",
+  "homepage": "https://github.com/celados/claude-session#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/celados/claude-session.git"
   },
+  "bin": {
+    "claude-session": "./src/main.ts",
+    "claude-session-mcp": "./src/mcp.ts"
+  },
+  "files": [
+    "src"
+  ],
   "type": "module",
   "scripts": {
     "check": "vp check",
     "format": "vp fmt",
+    "mcp": "bun src/mcp.ts",
+    "verify:package": "bun run ./scripts/verify-package-artifact.ts",
     "test": "vp test --run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@valibot/to-json-schema": "^1.7.1",
     "argc": "github:ethan-huo/argc#v7.7.0",
     "valibot": "^1.4.2"
