@@ -45,6 +45,29 @@ appears as `claude-session`; its tools are `list_sessions`, `read_session`,
 `interrupt_session`. Migration adds `export_session`, `import_session`, and
 `handoff_session`.
 
+### Keep the CLI and plugin versions matched
+
+The CLI and the plugin ship through two different channels that upgrade
+independently: the CLI comes from a GitHub Release tarball, while the plugin
+tracks this repository's `main` branch. The plugin's MCP server executes the
+globally installed CLI, so a mismatch is easy to create and awkward to notice —
+the tool list comes from the CLI while the Skill text comes from the plugin, and
+a stale half shows up as missing tools or as guidance describing tools that do
+not exist.
+
+Upgrade both together, then restart the agent session:
+
+```sh
+bun add --global \
+  "claude-session@https://github.com/celados/claude-session/releases/latest/download/claude-session.tgz"
+claude plugin marketplace update claude-session
+claude plugin update claude-session@claude-session
+```
+
+Remote hosts have the same rule: every machine listed in `hosts.json` needs a
+CLI whose transport protocol version matches the local one, or calls fail with
+`version_mismatch`.
+
 ## Commands
 
 | Command     | Behavior                                                               |
