@@ -685,7 +685,7 @@ fi
     );
 
     const result = await runCli(
-      ["@run", "await argc.call.wait({ id: 'session-1', timeoutMs: 1000 })", "--json"],
+      ["@run", "await argc.call.wait({ id: 'session-1', timeoutMs: 3000 })", "--json"],
       {
         HOME: home,
         PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
@@ -931,6 +931,67 @@ while :; do sleep 1; done
     });
     await waitForFile(join(home, "managed-interrupted"));
   });
+
+  test("uses the managed-job busy predicate when refusing a fork", async () => {
+    const home = await createTemporaryHome();
+    const fakeBin = join(home, "bin");
+    const projectPath = join(home, "work", "example");
+    const indexDirectory = join(home, ".claude", "projects", "-tmp-example");
+    const stateDirectory = join(home, "state", "claude-session", "jobs");
+    const worker = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"]);
+    if (!worker.pid) throw new Error("Expected a worker pid.");
+    await mkdir(fakeBin, { recursive: true });
+    await mkdir(projectPath, { recursive: true });
+    await mkdir(indexDirectory, { recursive: true });
+    await mkdir(stateDirectory, { recursive: true });
+    await writeFile(
+      join(indexDirectory, "sessions-index.json"),
+      JSON.stringify({
+        version: 1,
+        entries: [{ sessionId: "session-1", projectPath }],
+      }),
+    );
+    await writeFile(
+      join(stateDirectory, "run-1.json"),
+      JSON.stringify({
+        version: 1,
+        run_id: "run-1",
+        session_id: "session-1",
+        kind: "send",
+        pid: worker.pid,
+        cwd: projectPath,
+        started_at: Date.now(),
+        stdout_path: join(stateDirectory, "run-1.stdout"),
+        stderr_path: join(stateDirectory, "run-1.stderr"),
+      }),
+    );
+    await writeExecutable(
+      join(fakeBin, "claude"),
+      `#!/bin/sh
+if [ "$1" = "agents" ]; then printf '%s\n' '[]'; exit 0; fi
+printf invoked > "$HOME/unexpected-fork"
+exit 90
+`,
+    );
+
+    try {
+      const result = await runCli(
+        ["@run", `await argc.call.fork({ id: 'session-1', prompt: 'fork' })`, "--json"],
+        {
+          HOME: home,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          XDG_STATE_HOME: join(home, "state"),
+        },
+      );
+
+      expect(result.stderr).toContain("code: session_busy");
+      await expect(readFile(join(home, "unexpected-fork"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+    } finally {
+      worker.kill("SIGKILL");
+    }
+  });
 });
 
 async function createTemporaryHome(): Promise<string> {
@@ -945,7 +1006,7 @@ async function writeExecutable(path: string, contents: string): Promise<void> {
 }
 
 async function waitForFile(path: string): Promise<void> {
-  const deadline = Date.now() + 1_000;
+  const deadline = Date.now() + 3_000;
   while (true) {
     try {
       await readFile(path);

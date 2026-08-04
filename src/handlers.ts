@@ -2,36 +2,46 @@ import type { AppHandlers } from "./schema.ts";
 import { domainError } from "argc";
 
 import {
-  createSession,
-  forkSession,
-  interruptSession,
-  listSessions,
-  readSession,
-  sendToSession,
-  waitForSession,
-} from "./session-controller.ts";
+  createSessionService,
+  exportSessionService,
+  forkSessionService,
+  handoffSessionService,
+  importSessionService,
+  interruptSessionService,
+  listSessionService,
+  readSessionService,
+  sendSessionService,
+  waitSessionService,
+} from "./session-service.ts";
 import { SessionControllerError } from "./session-error.ts";
 
 export const handlers: AppHandlers = {
-  list: async (options) => await listSessions(options.input.all),
-  read: async (options) => await readSession(options.input.id, options.input.after),
-  create: async (options) => await createSession(options.input),
+  list: async (options) => await withSessionErrors(async () => listSessionService(options.input)),
+  read: async (options) => await withSessionErrors(async () => readSessionService(options.input)),
+  create: async (options) =>
+    await withSessionErrors(async () => createSessionService(options.input)),
   send: async (options) =>
     await withSessionErrors(async () => {
-      return await sendToSession(options.input.id, options.input.prompt);
+      return await sendSessionService(options.input);
     }),
   fork: async (options) =>
     await withSessionErrors(async () => {
-      return await forkSession(options.input.id, options.input.prompt);
+      return await forkSessionService(options.input);
     }),
   wait: async (options) =>
     await withSessionErrors(async () => {
-      return await waitForSession(options.input.id, options.input.after, options.input.timeoutMs);
+      return await waitSessionService(options.input);
     }),
   interrupt: async (options) =>
     await withSessionErrors(async () => {
-      return await interruptSession(options.input.id);
+      return await interruptSessionService(options.input);
     }),
+  "export-session": async (options) =>
+    await withSessionErrors(async () => exportSessionService(options.input)),
+  "import-session": async (options) =>
+    await withSessionErrors(async () => importSessionService(options.input)),
+  handoff: async (options) =>
+    await withSessionErrors(async () => handoffSessionService(options.input)),
 };
 
 async function withSessionErrors<T>(operation: () => Promise<T>): Promise<T> {

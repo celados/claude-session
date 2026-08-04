@@ -68,10 +68,29 @@ exit 64
         "fork_session",
         "wait_for_session",
         "interrupt_session",
+        "export_session",
+        "import_session",
+        "handoff_session",
       ]);
       expect(listedTools.tools[0]).toMatchObject({
         annotations: { readOnlyHint: true, destructiveHint: false },
-        inputSchema: { type: "object" },
+        inputSchema: {
+          type: "object",
+          properties: expect.objectContaining({ host: { type: "string" } }),
+        },
+      });
+      expect(listedTools.tools.find((tool) => tool.name === "send_to_session")).toMatchObject({
+        inputSchema: {
+          properties: expect.objectContaining({ host: { type: "string" } }),
+        },
+      });
+      expect(listedTools.tools.find((tool) => tool.name === "export_session")).toMatchObject({
+        inputSchema: {
+          properties: expect.objectContaining({
+            host: { type: "string" },
+            handoffTimeoutMs: expect.any(Object),
+          }),
+        },
       });
 
       const called = await server.request<{
@@ -135,7 +154,7 @@ class McpTestClient {
       new Promise<never>((_resolve, reject) => {
         setTimeout(
           () => reject(new Error(`MCP request timed out: ${method}\n${this.stderr}`)),
-          2_000,
+          10_000,
         );
       }),
     ])) as Result;

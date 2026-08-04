@@ -2,27 +2,10 @@ import type { InferHandlers } from "argc";
 
 import { toJsonSchema, toStandardJsonSchema } from "@valibot/to-json-schema";
 import { c } from "argc";
-import * as v from "valibot";
 
-export const inputValidators = {
-  list: v.object({
-    all: v.optional(v.boolean(), false),
-  }),
-  read: v.object({ id: v.string(), after: v.optional(v.string()) }),
-  create: v.object({
-    cwd: v.string(),
-    name: v.optional(v.string()),
-    prompt: v.string(),
-  }),
-  send: v.object({ id: v.string(), prompt: v.string() }),
-  fork: v.object({ id: v.string(), prompt: v.string() }),
-  wait: v.object({
-    id: v.string(),
-    after: v.optional(v.string()),
-    timeoutMs: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 30_000),
-  }),
-  interrupt: v.object({ id: v.string() }),
-};
+import { inputValidators } from "./input-validators.ts";
+
+export { inputValidators } from "./input-validators.ts";
 
 export const inputJsonSchemas = {
   list: toJsonSchema(inputValidators.list),
@@ -32,6 +15,9 @@ export const inputJsonSchemas = {
   fork: toJsonSchema(inputValidators.fork),
   wait: toJsonSchema(inputValidators.wait),
   interrupt: toJsonSchema(inputValidators.interrupt),
+  export: toJsonSchema(inputValidators.export),
+  import: toJsonSchema(inputValidators.import),
+  handoff: toJsonSchema(inputValidators.handoff),
 };
 
 const inputStandardSchemas = {
@@ -42,6 +28,9 @@ const inputStandardSchemas = {
   fork: toStandardJsonSchema(inputValidators.fork),
   wait: toStandardJsonSchema(inputValidators.wait),
   interrupt: toStandardJsonSchema(inputValidators.interrupt),
+  export: toStandardJsonSchema(inputValidators.export),
+  import: toStandardJsonSchema(inputValidators.import),
+  handoff: toStandardJsonSchema(inputValidators.handoff),
 };
 
 const list = c
@@ -101,6 +90,29 @@ const interrupt = c
   })
   .input(inputStandardSchemas.interrupt);
 
-export const schema = { list, read, create, send, fork, wait, interrupt };
+const exportSession = c
+  .meta({ description: "Export an idle Claude session as a resumable bundle." })
+  .input(inputStandardSchemas.export);
+
+const importSession = c
+  .meta({ description: "Import a resumable Claude session bundle without changing its id." })
+  .input(inputStandardSchemas.import);
+
+const handoff = c
+  .meta({ description: "Export a session from one host and import it on another host." })
+  .input(inputStandardSchemas.handoff);
+
+export const schema = {
+  list,
+  read,
+  create,
+  send,
+  fork,
+  wait,
+  interrupt,
+  "export-session": exportSession,
+  "import-session": importSession,
+  handoff,
+};
 
 export type AppHandlers = InferHandlers<typeof schema>;

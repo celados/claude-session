@@ -2,7 +2,8 @@
 
 Machine-readable lifecycle control for Claude Code sessions. It provides the
 small session API needed by another agent or orchestrator: list, create, read,
-send, fork, wait, and interrupt.
+send, fork, wait, interrupt, export, import, and handoff. Every lifecycle
+operation can target a POSIX SSH host.
 
 ## Install
 
@@ -41,7 +42,8 @@ codex plugin add claude-session@claude-session
 Start a new Claude Code or Codex session after installation. The MCP server
 appears as `claude-session`; its tools are `list_sessions`, `read_session`,
 `create_session`, `send_to_session`, `fork_session`, `wait_for_session`, and
-`interrupt_session`.
+`interrupt_session`. Migration adds `export_session`, `import_session`, and
+`handoff_session`.
 
 ## Commands
 
@@ -54,6 +56,9 @@ appears as `claude-session`; its tools are `list_sessions`, `read_session`,
 | `fork`      | Copy completed context into a new session UUID and start a turn.       |
 | `wait`      | Wait until completion or a bounded timeout, then return new messages.  |
 | `interrupt` | Interrupt the managed process group or native Claude process.          |
+| `export`    | Package an idle session and its resume-relevant sidecars.              |
+| `import`    | Restore a bundle while preserving its Claude session id.               |
+| `handoff`   | Relay a bundle from one host to another through this machine.          |
 
 Human-readable commands return YAML:
 
@@ -66,6 +71,9 @@ claude-session send --id SESSION_ID --prompt "Continue and run the tests."
 claude-session fork --id SESSION_ID --prompt "Try the alternative design."
 claude-session wait --id SESSION_ID --timeoutMs 30000
 claude-session interrupt --id SESSION_ID
+claude-session export --id SESSION_ID --out ./session.tgz
+claude-session import --bundle ./session.tgz --cwd "$PWD"
+claude-session handoff --id SESSION_ID --to nas --cwd /srv/project
 ```
 
 For strict JSON, use argc's `@run` interface. `--json` belongs to `@run`, not to
@@ -75,6 +83,8 @@ an individual command:
 claude-session @run 'await argc.call.list({ all: true })' --json
 claude-session @run \
   'await argc.call.wait({ id: "SESSION_ID", timeoutMs: 30000 })' --json
+claude-session @run \
+  'await argc.call["export-session"]({ id: "SESSION_ID", out: "./session.tgz" })' --json
 ```
 
 The complete machine-readable API is available through:
@@ -88,6 +98,39 @@ The same API is available to MCP clients over stdio:
 ```sh
 claude-session-mcp
 ```
+
+## Remote hosts
+
+Pass `host` to any operation. The reserved host `local`, or an omitted host,
+uses this machine. Explicit remote hosts may be any safe SSH alias; hosts in
+`~/.config/claude-session/hosts.json` also participate in `list --allHosts`.
+
+```json
+{
+  "version": 1,
+  "hosts": {
+    "nas": { "bin": "/home/user/.bun/bin/claude-session" },
+    "devbox": { "includeInAllHosts": false }
+  }
+}
+```
+
+SSH authentication remains owned by the user's SSH configuration. Transport
+uses one non-interactive SSH exec call and a private versioned `@transport`
+JSON envelope. Prompts and bundle bytes travel over stdin, never in remote
+argv. Remote bundle payloads are limited to 64 MiB in v1.
+
+Session identity is `(host, session_id)`. Import preserves the session id and
+refuses to overwrite an existing local session. Bundle paths always refer to
+the machine running this CLI or MCP server, even when the session itself is
+remote.
+
+Bundles contain plaintext Claude transcripts and resume-relevant tool-result
+and subagent sidecars. They may contain secrets from prior tool calls. Bundle
+files use mode `0600`; store and transfer them accordingly. Imports validate
+archive paths, sizes, and SHA-256 inventory before committing staged files.
+Failed handoffs retain a retryable bundle under the XDG state directory and
+report its path in the error.
 
 ## Lifecycle model
 
@@ -104,6 +147,9 @@ Managed job metadata and private stdout/stderr logs live under
 `$XDG_STATE_HOME/claude-session/jobs`, or `~/.local/state/claude-session/jobs`
 when `XDG_STATE_HOME` is unset. Prompt handoff files use mode `0600` and are
 unlinked immediately after the child process starts.
+
+Imported session lineage is stored separately under the same state root. Claude
+state discovery honors `CLAUDE_CONFIG_DIR`.
 
 ## Development
 

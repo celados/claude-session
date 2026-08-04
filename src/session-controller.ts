@@ -1,9 +1,12 @@
 import { spawn as spawnDetached } from "node:child_process";
 import { closeSync, openSync } from "node:fs";
-import { readdir, readFile, unlink } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { readFile, unlink } from "node:fs/promises";
 
+import {
+  findClaudeTranscriptPath,
+  readHistoricalSessions,
+  type HistoricalSession,
+} from "./claude-state.ts";
 import { SessionControllerError } from "./session-error.ts";
 import {
   isProcessRunning,
@@ -12,6 +15,7 @@ import {
   prepareJobFiles,
   writeJob,
 } from "./job-registry.ts";
+import { getSessionRecord, listSessionRecords } from "./session-registry.ts";
 
 type ActiveSession = {
   sessionId: string;
@@ -21,17 +25,6 @@ type ActiveSession = {
   pid?: number;
   kind?: string;
   startedAt?: number;
-};
-
-type HistoricalSession = {
-  sessionId: string;
-  fullPath?: string;
-  created?: string;
-  modified?: string;
-  summary?: string;
-  messageCount?: number;
-  gitBranch?: string;
-  projectPath?: string;
 };
 
 type ConversationMessage = {
@@ -73,6 +66,18 @@ export async function listSessions(all: boolean): Promise<{ sessions: SessionSum
   for (const job of latestJobsBySession(await listJobs())) {
     const existing = sessionsById.get(job.session_id);
     sessionsById.set(job.session_id, presentManagedSession(job, existing));
+  }
+
+  for (const record of await listSessionRecords()) {
+    if (sessionsById.has(record.session_id)) continue;
+    sessionsById.set(record.session_id, {
+      id: record.session_id,
+      name: record.name,
+      status: "idle",
+      cwd: record.cwd,
+      kind: "imported",
+      started_at: record.imported_at,
+    });
   }
 
   if (all) {
@@ -155,25 +160,11 @@ export async function sendToSession(
   status: "running";
   cwd: string;
 }> {
-  const active = (await readActiveSessions(true)).find((session) => {
-    return session.sessionId === sessionId;
-  });
-  const existingJob = await latestJobForSession(sessionId);
-  if (
-    (active?.status && isRunningStatus(active.status)) ||
-    (existingJob && isProcessRunning(existingJob.pid))
-  ) {
-    throw new SessionControllerError("session_busy", "The Claude session is already running.", {
-      session_id: sessionId,
-    });
-  }
-
-  const historical = (await readHistoricalSessions()).find((session) => {
-    return session.sessionId === sessionId;
-  });
-  const cwd = active?.cwd ?? historical?.projectPath ?? existingJob?.cwd;
+  const state = await inspectSession(sessionId);
+  assertIdleState(sessionId, state);
+  const cwd = state.cwd;
   if (!cwd) throw new Error(`Claude session not found: ${sessionId}`);
-  await releaseNativeBackgroundSession(active);
+  await releaseNativeBackgroundSession(state.active);
 
   const runId = crypto.randomUUID();
   await startManagedRun({
@@ -203,21 +194,11 @@ export async function forkSession(
   status: "running";
   cwd: string;
 }> {
-  const active = (await readActiveSessions(true)).find((session) => {
-    return session.sessionId === sourceSessionId;
-  });
-  if (active?.status && isRunningStatus(active.status)) {
-    throw new SessionControllerError("session_busy", "The Claude session is already running.", {
-      session_id: sourceSessionId,
-    });
-  }
-  const historical = (await readHistoricalSessions()).find((session) => {
-    return session.sessionId === sourceSessionId;
-  });
-  const existingJob = await latestJobForSession(sourceSessionId);
-  const cwd = active?.cwd ?? historical?.projectPath ?? existingJob?.cwd;
+  const state = await inspectSession(sourceSessionId);
+  assertIdleState(sourceSessionId, state);
+  const cwd = state.cwd;
   if (!cwd) throw new Error(`Claude session not found: ${sourceSessionId}`);
-  await releaseNativeBackgroundSession(active);
+  await releaseNativeBackgroundSession(state.active);
 
   const sessionId = crypto.randomUUID();
   const runId = crypto.randomUUID();
@@ -350,6 +331,18 @@ export async function interruptSession(sessionId: string): Promise<{
   };
 }
 
+export async function assertSessionIdle(sessionId: string): Promise<void> {
+  assertIdleState(sessionId, await inspectSession(sessionId));
+}
+
+export async function sessionCwd(sessionId: string): Promise<string | undefined> {
+  return (await inspectSession(sessionId)).cwd;
+}
+
+export async function sessionTranscriptPath(sessionId: string): Promise<string | undefined> {
+  return await findTranscriptPath(sessionId);
+}
+
 async function readActiveSessions(all: boolean): Promise<ActiveSession[]> {
   const args = ["claude", "agents", "--json"];
   if (all) args.push("--all");
@@ -384,57 +377,9 @@ async function releaseNativeBackgroundSession(session: ActiveSession | undefined
   }
 }
 
-async function readHistoricalSessions(): Promise<HistoricalSession[]> {
-  const projectsDirectory = join(homedir(), ".claude", "projects");
-  let projectDirectories;
-  try {
-    projectDirectories = await readdir(projectsDirectory, { withFileTypes: true });
-  } catch (error) {
-    if (isMissingPathError(error)) return [];
-    throw error;
-  }
-
-  const sessions: HistoricalSession[] = [];
-  for (const directory of projectDirectories) {
-    if (!directory.isDirectory()) continue;
-    const indexPath = join(projectsDirectory, directory.name, "sessions-index.json");
-    try {
-      const parsed: unknown = JSON.parse(await readFile(indexPath, "utf8"));
-      if (!isSessionIndex(parsed)) continue;
-      sessions.push(...parsed.entries.filter(isHistoricalSession));
-    } catch (error) {
-      if (!isMissingPathError(error)) throw error;
-    }
-  }
-  return sessions;
-}
-
 async function findTranscriptPath(sessionId: string): Promise<string | undefined> {
-  if (!/^[a-zA-Z0-9-]+$/.test(sessionId)) return undefined;
-  const historical = (await readHistoricalSessions()).find((session) => {
-    return session.sessionId === sessionId && typeof session.fullPath === "string";
-  });
-  if (historical?.fullPath) return historical.fullPath;
-
-  const projectsDirectory = join(homedir(), ".claude", "projects");
-  let projectDirectories;
-  try {
-    projectDirectories = await readdir(projectsDirectory, { withFileTypes: true });
-  } catch (error) {
-    if (isMissingPathError(error)) return undefined;
-    throw error;
-  }
-  for (const directory of projectDirectories) {
-    if (!directory.isDirectory()) continue;
-    const candidate = join(projectsDirectory, directory.name, `${sessionId}.jsonl`);
-    try {
-      await readFile(candidate, { encoding: null, flag: "r" });
-      return candidate;
-    } catch (error) {
-      if (!isMissingPathError(error)) throw error;
-    }
-  }
-  return undefined;
+  const imported = await getSessionRecord(sessionId);
+  return imported?.transcript_path ?? (await findClaudeTranscriptPath(sessionId));
 }
 
 function presentActiveSession(session: ActiveSession): SessionSummary {
@@ -624,16 +569,43 @@ function isActiveSession(value: unknown): value is ActiveSession {
   return isRecord(value) && typeof value.sessionId === "string";
 }
 
-function isHistoricalSession(value: unknown): value is HistoricalSession {
-  return isRecord(value) && typeof value.sessionId === "string";
-}
-
-function isSessionIndex(value: unknown): value is { entries: unknown[] } {
-  return isRecord(value) && Array.isArray(value.entries);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+type SessionState = {
+  active?: ActiveSession;
+  historical?: HistoricalSession;
+  job?: Awaited<ReturnType<typeof latestJobForSession>>;
+  cwd?: string;
+};
+
+async function inspectSession(sessionId: string): Promise<SessionState> {
+  const [activeSessions, historicalSessions, job, imported] = await Promise.all([
+    readActiveSessions(true),
+    readHistoricalSessions(),
+    latestJobForSession(sessionId),
+    getSessionRecord(sessionId),
+  ]);
+  const active = activeSessions.find((session) => session.sessionId === sessionId);
+  const historical = historicalSessions.find((session) => session.sessionId === sessionId);
+  return {
+    active,
+    historical,
+    job,
+    cwd: active?.cwd ?? historical?.projectPath ?? job?.cwd ?? imported?.cwd,
+  };
+}
+
+function assertIdleState(sessionId: string, state: SessionState): void {
+  if (
+    (state.active?.status && isRunningStatus(state.active.status)) ||
+    (state.job && isProcessRunning(state.job.pid))
+  ) {
+    throw new SessionControllerError("session_busy", "The Claude session is already running.", {
+      session_id: sessionId,
+    });
+  }
 }
 
 function isMissingPathError(error: unknown): boolean {

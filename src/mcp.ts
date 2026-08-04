@@ -8,14 +8,17 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprot
 import * as v from "valibot";
 
 import {
-  createSession,
-  forkSession,
-  interruptSession,
-  listSessions,
-  readSession,
-  sendToSession,
-  waitForSession,
-} from "./session-controller.ts";
+  createSessionService,
+  exportSessionService,
+  forkSessionService,
+  handoffSessionService,
+  importSessionService,
+  interruptSessionService,
+  listSessionService,
+  readSessionService,
+  sendSessionService,
+  waitSessionService,
+} from "./session-service.ts";
 import { SessionControllerError } from "./session-error.ts";
 import { inputJsonSchemas, inputValidators } from "./schema.ts";
 
@@ -39,6 +42,9 @@ const tools: Tool[] = [
     true,
   ),
   tool("interrupt_session", "Interrupt a running Claude Code session.", "interrupt", false, true),
+  tool("export_session", "Export an idle Claude Code session bundle.", "export"),
+  tool("import_session", "Import a Claude Code session bundle without changing its id.", "import"),
+  tool("handoff_session", "Move a resumable session context between hosts.", "handoff"),
 ];
 
 const server = new Server(
@@ -85,31 +91,43 @@ async function callTool(name: string, input: JsonObject): Promise<JsonObject> {
   switch (name) {
     case "list_sessions": {
       const parsed = v.parse(inputValidators.list, input);
-      return await listSessions(parsed.all);
+      return await listSessionService(parsed);
     }
     case "read_session": {
       const parsed = v.parse(inputValidators.read, input);
-      return await readSession(parsed.id, parsed.after);
+      return await readSessionService(parsed);
     }
     case "create_session": {
       const parsed = v.parse(inputValidators.create, input);
-      return await createSession(parsed);
+      return await createSessionService(parsed);
     }
     case "send_to_session": {
       const parsed = v.parse(inputValidators.send, input);
-      return await sendToSession(parsed.id, parsed.prompt);
+      return await sendSessionService(parsed);
     }
     case "fork_session": {
       const parsed = v.parse(inputValidators.fork, input);
-      return await forkSession(parsed.id, parsed.prompt);
+      return await forkSessionService(parsed);
     }
     case "wait_for_session": {
       const parsed = v.parse(inputValidators.wait, input);
-      return await waitForSession(parsed.id, parsed.after, parsed.timeoutMs);
+      return await waitSessionService(parsed);
     }
     case "interrupt_session": {
       const parsed = v.parse(inputValidators.interrupt, input);
-      return await interruptSession(parsed.id);
+      return await interruptSessionService(parsed);
+    }
+    case "export_session": {
+      const parsed = v.parse(inputValidators.export, input);
+      return await exportSessionService(parsed);
+    }
+    case "import_session": {
+      const parsed = v.parse(inputValidators.import, input);
+      return await importSessionService(parsed);
+    }
+    case "handoff_session": {
+      const parsed = v.parse(inputValidators.handoff, input);
+      return await handoffSessionService(parsed);
     }
     default:
       throw new SessionControllerError("tool_not_found", "Unknown Claude session tool.", {
