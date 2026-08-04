@@ -141,6 +141,7 @@ exit 64
     environment: {
       HOME: home,
       PATH: `${bin}:${process.env.PATH ?? ""}`,
+      XDG_CONFIG_HOME: join(home, ".config"),
       XDG_STATE_HOME: join(home, "state"),
     },
   };

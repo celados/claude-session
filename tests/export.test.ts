@@ -172,6 +172,7 @@ ${closingBody}
     environment: {
       HOME: home,
       PATH: `${bin}:${process.env.PATH ?? ""}`,
+      XDG_CONFIG_HOME: join(home, ".config"),
       XDG_STATE_HOME: join(home, "state"),
     },
   };
@@ -214,7 +215,11 @@ printf '%s\n' '${response}'
   await writeFile(join(config, "hosts.json"), JSON.stringify({ version: 1, hosts: { nas: {} } }));
   return {
     home,
-    environment: { HOME: home, PATH: `${bin}:${process.env.PATH ?? ""}` },
+    environment: {
+      HOME: home,
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      XDG_CONFIG_HOME: join(home, ".config"),
+    },
   };
 }
 

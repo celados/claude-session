@@ -14,6 +14,7 @@ const temporaryDirectories: string[] = [];
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const originalEnvironment = {
   HOME: process.env.HOME,
+  XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
   XDG_STATE_HOME: process.env.XDG_STATE_HOME,
   CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
 };
@@ -85,6 +86,7 @@ printf '%s\n' '{"session_id":"session-1","result":"continued"}'
       {
         HOME: fixture.home,
         PATH: `${bin}:${process.env.PATH ?? ""}`,
+        XDG_CONFIG_HOME: join(fixture.home, ".config"),
         XDG_STATE_HOME: join(fixture.home, "state"),
         CLAUDE_CONFIG_DIR: fixture.claudeConfig,
       },
@@ -151,7 +153,11 @@ printf '%s\n' '{"ok":true,"result":{"session_id":"session-1","status":"imported"
         `await argc.call["import-session"]({ bundle: '${bundlePath}', host: 'nas', cwd: '/data/proj' })`,
         "--json",
       ],
-      { HOME: fixture.home, PATH: `${bin}:${process.env.PATH ?? ""}` },
+      {
+        HOME: fixture.home,
+        PATH: `${bin}:${process.env.PATH ?? ""}`,
+        XDG_CONFIG_HOME: join(fixture.home, ".config"),
+      },
     );
 
     expect(JSON.parse(result.stdout)).toMatchObject({ session_id: "session-1", host: "nas" });
@@ -172,6 +178,7 @@ async function createFixture(options: FixtureOptions = {}) {
   const claudeConfig = join(home, "custom-claude");
   await mkdir(cwd);
   process.env.HOME = home;
+  process.env.XDG_CONFIG_HOME = join(home, ".config");
   process.env.XDG_STATE_HOME = join(home, "state");
   process.env.CLAUDE_CONFIG_DIR = claudeConfig;
   const transcript = Buffer.from('{"sessionId":"session-1","cwd":"/source"}\n');
@@ -203,6 +210,7 @@ async function createFixture(options: FixtureOptions = {}) {
 
 function restoreEnvironment(): void {
   setEnvironment("HOME", originalEnvironment.HOME);
+  setEnvironment("XDG_CONFIG_HOME", originalEnvironment.XDG_CONFIG_HOME);
   setEnvironment("XDG_STATE_HOME", originalEnvironment.XDG_STATE_HOME);
   setEnvironment("CLAUDE_CONFIG_DIR", originalEnvironment.CLAUDE_CONFIG_DIR);
 }

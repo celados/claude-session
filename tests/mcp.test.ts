@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
+import packageJson from "../package.json" with { type: "json" };
+
 const temporaryDirectories: string[] = [];
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -51,7 +53,7 @@ exit 64
         clientInfo: { name: "claude-session-test", version: "1.0.0" },
       });
       expect(initialized).toMatchObject({
-        serverInfo: { name: "claude-session", version: "0.1.0" },
+        serverInfo: { name: "claude-session", version: packageJson.version },
         capabilities: { tools: {} },
         instructions: expect.stringContaining("Use create_session for new work"),
       });
